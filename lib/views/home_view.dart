@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
@@ -13,10 +14,12 @@ class HomeView extends StatefulWidget {
   _HomeViewState createState() => _HomeViewState();
 }
 
-class _HomeViewState extends State<HomeView> {
+class _HomeViewState extends State<HomeView>
+    with SingleTickerProviderStateMixin {
   DatabaseReference databaseReference;
   List<Product> productList = List<Product>();
   StreamSubscription<Event> productSub;
+  AnimationController animCont;
 
   @override
   void dispose() {
@@ -27,6 +30,11 @@ class _HomeViewState extends State<HomeView> {
   @override
   void initState() {
     super.initState();
+    animCont = AnimationController(
+      vsync: this,
+      duration: new Duration(seconds: 7),
+    );
+    animCont.repeat();
     databaseReference = FirebaseDatabase.instance.reference();
     databaseReference.keepSynced(true);
 
@@ -45,11 +53,6 @@ class _HomeViewState extends State<HomeView> {
 
     // populating product list
     populateProductList();
-  }
-
-  void sleep(int duration) async {
-    await Future.delayed(const Duration(seconds: 3),
-        () => print("Slept for ${duration.toString()} seconds"));
   }
 
   @override
@@ -72,14 +75,17 @@ class _HomeViewState extends State<HomeView> {
   }
 
   void populateProductList() {
+    productList.clear();
     databaseReference.once().then((DataSnapshot snapshot) {
       readData();
       if (snapshot.value != null) {
-        var productJsonList = List.from(snapshot.value);
+        var productJsonList = castDynamicList(snapshot.value);
         productJsonList.removeWhere((element) => element == null);
-        productList.clear();
-        productList = productJsonList.map((e) => Product.fromJson(e)).toList();
-        print(productList);
+        if (productJsonList.isNotEmpty) {
+          productList =
+              productJsonList.map((e) => Product.fromJson(e)).toList();
+          print(productList);
+        }
         setState(() {
           print("re-rendering");
         });
@@ -87,11 +93,38 @@ class _HomeViewState extends State<HomeView> {
     });
   }
 
+  List<dynamic> castDynamicList(x) {
+    if (x is List<dynamic>) {
+      return List<dynamic>.from(x, growable: true);
+    } else if (x is LinkedHashMap) {
+      var map = LinkedHashMap.from(x);
+      return List<dynamic>.from(map.values, growable: true);
+    } else {
+      return List<dynamic>();
+    }
+  }
+
+//child: Text("Uh Oh, no products in our database...")
   Widget productListView() {
     if (productList.isEmpty) {
-      return
-          //todo:animation here
-          Center(child: Text("Uh Oh, no products in our database..."));
+      return Container(
+        alignment: Alignment.center,
+        color: Colors.white,
+        child: new AnimatedBuilder(
+          animation: animCont,
+          child: new Container(
+            height: 150.0,
+            width: 150.0,
+            child: Text("Uh Oh, no products in our database..."),
+          ),
+          builder: (BuildContext context, Widget _widget) {
+            return new Transform.rotate(
+              angle: animCont.value * 6.3,
+              child: _widget,
+            );
+          },
+        ),
+      );
     } else {
       return ListView.builder(
           itemCount: productList.length,
@@ -296,7 +329,6 @@ class _HomeViewState extends State<HomeView> {
   }
 
   void addProduct() {
-    print('s');
     Navigator.pushNamed(context, "/qr_scan").then((value) {
       if (value != null) {
         print(value.toString());
